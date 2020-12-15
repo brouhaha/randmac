@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+
+# Random MAC address generator
+# Copyright 2020 Eric Smith
+# SPDX-License-Identifier: GPL-3.0-only
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of version 3 of the GNU General Public License
+# as published by the Free Software Foundation.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import argparse
+import random
+import string
+
+
+def rand_bytes(count: int) -> bytearray:
+    return bytearray([random.randrange(256) for _ in range(count)])
+
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-n', '--count',
+                        type = int,
+                        default = 1,
+                        help = 'generate n MAC addresses (default 1)')
+
+    # MAC address options
+    ag = parser.add_mutually_exclusive_group()
+    ag.add_argument('-l', '--local',
+                    action = 'store_true',
+                    help = 'locally administered MAC address')
+    ag.add_argument('-g', '--global',
+                    action = 'store_false',
+                    dest = 'local',
+                    help = 'globably administered MAC address (default)')
+
+    um = parser.add_mutually_exclusive_group()
+    um.add_argument('-m', '--multicast',
+                    action = 'store_true',
+                    help = 'generate multicast MAC address')
+    um.add_argument('-u', '--unicast',
+                    action = 'store_false',
+                    dest = 'multicast',
+                    help = 'generate unicast MAC address (default)')
+
+    parser.add_argument('-p', '--prefix',
+                        type = str,
+                        help = 'use prefix (hex digits), e.g. for OUI')
+    # All non-hexadecimal characters will be ignored.
+    # The low two bits of first octet of prefix will be ignored, as those
+    # are set by the global/local and unicast/multicast options.
+    # Typically the prefix will be 6, 7, or 9 hexadecimal digits,
+    # for IEEE MA-L, MA-M, or MA-S blocks, respectively.
+    # For information on IEEE assigned identifiers and address blocks, see:
+    #   https://standards.ieee.org/content/dam/ieee-standards/standards/web/documents/tutorials/eui.pdf
+    # To register an address block, see:
+    #   https://standards.ieee.org/content/ieee-standards/en/products-services/regauth/
+
+    # output formatting options
+    parser.add_argument('-U', '--uppercase',
+                        action = 'store_true',
+                        help = 'format MAC address using upper case hex digits')
+
+    parser.add_argument('-s', '--separator',
+                        type = str,
+                        default = ':',
+                        help = 'set separator between octets of MAC address (default ":")')
+
+
+    args = parser.parse_args()
+
+    prefix_digits = ''
+    if args.prefix is not None:
+        prefix_digits = ''.join([c for c in args.prefix if c in string.hexdigits])
+
+    for i in range(args.count):
+        mac = rand_bytes(6)
+
+        for i in range(len(prefix_digits)):
+            octet_index = i // 2
+            lsd = i % 2
+            digit = int(prefix_digits[i], 16)
+            if lsd:
+                mac[octet_index] = (mac[octet_index] & 0xf0) | digit
+            else:
+                mac[octet_index] = (mac[octet_index] & 0x0f) | (digit << 4)
+
+        if args.local:
+            mac[0] |= 0x02  # locally administered, set bit 1
+        else:
+            mac[0] &= 0xfd  # universaly administered, clear bit 1
+
+        if args.multicast:
+            mac[0] |= 0x01  # multicast, set bit 0
+        else:
+            mac[0] &= 0xfe  # unicast, clear bit 0
+
+        fmt = '%02X' if args.uppercase else '%02x'
+        mac_str = args.separator.join([fmt % b for b in mac])
+        print(mac_str)
+
+
+if __name__ == '__main__':
+    main()
